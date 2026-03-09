@@ -34,7 +34,7 @@ from reportlab.platypus import (
     Spacer,
     PageBreak
 )
-from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
 
 load_dotenv()
 
@@ -275,6 +275,191 @@ class WoltInvoiceBot:
         # Собираем PDF
         doc.build(story)
         logger.info(f"Summary PDF created: {output_path}")
+    
+    def create_tax_pdf(self, invoices: List[InvoiceData], output_path: str):
+        """Creates tax calculation PDF for students"""
+        font_name = 'Helvetica'
+        font_name_bold = 'Helvetica-Bold'
+        
+        # Calculate totals
+        total_income = sum(inv.total for inv in invoices)
+        expenses_60 = total_income * 0.6
+        tax_base = total_income - expenses_60
+        tax_15 = tax_base * 0.15
+        taxpayer_deduction = 30840
+        student_deduction = 4020
+        total_deductions = taxpayer_deduction + student_deduction
+        final_tax = max(0, tax_15 - total_deductions)
+        
+        needs_health = total_income >= 100000
+        needs_social = total_income >= 100000
+        needs_prepayment = total_income >= 50000
+        
+        doc = SimpleDocTemplate(
+            output_path,
+            pagesize=A4,
+            rightMargin=2*cm,
+            leftMargin=2*cm,
+            topMargin=2*cm,
+            bottomMargin=2*cm
+        )
+        
+        styles = getSampleStyleSheet()
+        story = []
+        
+        # Title
+        title_style = ParagraphStyle(
+            'Title',
+            parent=styles['Heading1'],
+            fontSize=22,
+            textColor=colors.HexColor('#1a1a1a'),
+            spaceAfter=20,
+            alignment=TA_CENTER,
+            fontName=font_name_bold
+        )
+        story.append(Paragraph("Student Tax Calculation 2025", title_style))
+        story.append(Paragraph(f"Generated: {datetime.now().strftime('%d.%m.%Y')}", 
+                               ParagraphStyle('subtitle', parent=styles['Normal'], alignment=TA_CENTER, textColor=colors.grey, fontSize=10)))
+        story.append(Spacer(1, 1*cm))
+        
+        # Income Summary
+        story.append(Paragraph("INCOME SUMMARY", ParagraphStyle('h2', parent=styles['Heading2'], fontName=font_name_bold, fontSize=14, textColor=colors.HexColor('#4A90E2'))))
+        story.append(Spacer(1, 0.3*cm))
+        
+        income_data = [
+            ['Description', 'Amount (CZK)'],
+            ['Total Income (Celkem prijmy)', f"{total_income:,.2f}".replace(',', ' ').replace('.', ',')],
+            ['Number of Invoices', str(len(invoices))],
+        ]
+        
+        income_table = Table(income_data, colWidths=[10*cm, 5*cm])
+        income_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4A90E2')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('FONTNAME', (0, 0), (-1, 0), font_name_bold),
+            ('FONTSIZE', (0, 0), (-1, 0), 11),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('ALIGN', (1, 1), (1, -1), 'RIGHT'),
+            ('FONTNAME', (0, 1), (-1, -1), font_name),
+            ('FONTSIZE', (0, 1), (-1, -1), 10),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ]))
+        story.append(income_table)
+        story.append(Spacer(1, 0.8*cm))
+        
+        # Tax Calculation
+        story.append(Paragraph("TAX CALCULATION (Vypocet dane)", ParagraphStyle('h2', parent=styles['Heading2'], fontName=font_name_bold, fontSize=14, textColor=colors.HexColor('#4A90E2'))))
+        story.append(Spacer(1, 0.3*cm))
+        
+        tax_data = [
+            ['Item', 'Amount (CZK)'],
+            ['Income (Prijmy)', f"{total_income:,.2f}".replace(',', ' ').replace('.', ',')],
+            ['Expenses 60% (Vydaje 60%)', f"-{expenses_60:,.2f}".replace(',', ' ').replace('.', ',')],
+            ['Tax Base (Zaklad dane)', f"{tax_base:,.2f}".replace(',', ' ').replace('.', ',')],
+            ['Tax 15%', f"{tax_15:,.2f}".replace(',', ' ').replace('.', ',')],
+            ['Taxpayer Deduction (Sleva na poplatnika)', f"-{taxpayer_deduction:,.2f}".replace(',', ' ').replace('.', ',')],
+            ['Student Deduction (Sleva na studenta)', f"-{student_deduction:,.2f}".replace(',', ' ').replace('.', ',')],
+        ]
+        
+        tax_table = Table(tax_data, colWidths=[10*cm, 5*cm])
+        tax_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4A90E2')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('FONTNAME', (0, 0), (-1, 0), font_name_bold),
+            ('FONTSIZE', (0, 0), (-1, 0), 11),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('ALIGN', (1, 1), (1, -1), 'RIGHT'),
+            ('FONTNAME', (0, 1), (-1, -1), font_name),
+            ('FONTSIZE', (0, 1), (-1, -1), 10),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ]))
+        story.append(tax_table)
+        story.append(Spacer(1, 0.5*cm))
+        
+        # Final tax to pay
+        final_box = Paragraph(f"<b>FINAL TAX TO PAY: {final_tax:,.2f} CZK</b>".replace(',', ' ').replace('.', ','),
+                              ParagraphStyle('final', parent=styles['Normal'], fontSize=16, fontName=font_name_bold, 
+                                           textColor=colors.HexColor('#4A90E2'), alignment=TA_CENTER,
+                                           borderColor=colors.HexColor('#4A90E2'), borderWidth=2, borderPadding=10))
+        story.append(final_box)
+        story.append(Spacer(1, 0.8*cm))
+        
+        # Insurance
+        story.append(Paragraph("INSURANCE REQUIREMENTS (Pojisteni)", ParagraphStyle('h2', parent=styles['Heading2'], fontName=font_name_bold, fontSize=14, textColor=colors.HexColor('#4A90E2'))))
+        story.append(Spacer(1, 0.3*cm))
+        
+        insurance_data = [
+            ['Type', 'Required?', 'Notes'],
+            ['Health Insurance (Zdravotni)', 
+             'YES' if needs_health else 'NO',
+             f"Min. {2968*12:,} CZK/year".replace(',', ' ') if needs_health else 'Income < 100,000 CZK'],
+            ['Social Insurance (Socialni)', 
+             'YES' if needs_social else 'NO',
+             f"Min. {3267*12:,} CZK/year".replace(',', ' ') if needs_social else 'Income < 100,000 CZK'],
+            ['Tax Prepayments (Zalohy)', 
+             'YES' if needs_prepayment else 'NO',
+             'Required' if needs_prepayment else 'Income < 50,000 CZK'],
+        ]
+        
+        insurance_table = Table(insurance_data, colWidths=[5*cm, 3*cm, 7*cm])
+        insurance_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4A90E2')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('FONTNAME', (0, 0), (-1, 0), font_name_bold),
+            ('FONTSIZE', (0, 0), (-1, 0), 11),
+            ('FONTNAME', (0, 1), (-1, -1), font_name),
+            ('FONTSIZE', (0, 1), (-1, -1), 10),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('BACKGROUND', (1, 1), (1, -1), colors.HexColor('#E8F4F8')),
+        ]))
+        story.append(insurance_table)
+        story.append(Spacer(1, 0.8*cm))
+        
+        # Important Dates
+        story.append(Paragraph("IMPORTANT DEADLINES (Terminy)", ParagraphStyle('h2', parent=styles['Heading2'], fontName=font_name_bold, fontSize=14, textColor=colors.HexColor('#4A90E2'))))
+        story.append(Spacer(1, 0.3*cm))
+        
+        deadlines_data = [
+            ['Document', 'Deadline'],
+            ['Overview of Payments (Prehled plateb)', '1 February 2026'],
+            ['Tax Return (Danove priznani)', '1 April 2026'],
+        ]
+        
+        deadlines_table = Table(deadlines_data, colWidths=[10*cm, 5*cm])
+        deadlines_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4A90E2')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('FONTNAME', (0, 0), (-1, 0), font_name_bold),
+            ('FONTSIZE', (0, 0), (-1, 0), 11),
+            ('FONTNAME', (0, 1), (-1, -1), font_name),
+            ('FONTSIZE', (0, 1), (-1, -1), 10),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ]))
+        story.append(deadlines_table)
+        story.append(Spacer(1, 1*cm))
+        
+        # Disclaimer
+        disclaimer_style = ParagraphStyle('disclaimer', parent=styles['Normal'], fontSize=9, textColor=colors.grey, 
+                                         fontName=font_name, alignment=TA_CENTER)
+        story.append(Paragraph("⚠️ IMPORTANT NOTICE ⚠️", ParagraphStyle('warn', parent=disclaimer_style, fontSize=10, fontName=font_name_bold, textColor=colors.red)))
+        story.append(Spacer(1, 0.3*cm))
+        story.append(Paragraph("This is an estimated calculation for informational purposes only.", disclaimer_style))
+        story.append(Paragraph("For accurate tax calculation, please consult:", disclaimer_style))
+        story.append(Paragraph("• Accountant (ucetni) • Tax Office (financni urad) • Your insurance company", disclaimer_style))
+        story.append(Spacer(1, 0.5*cm))
+        story.append(Paragraph("💡 TIP: You can claim actual expenses instead of 60% flat-rate (fuel, repairs, phone, etc.)", 
+                             ParagraphStyle('tip', parent=disclaimer_style, fontSize=9, textColor=colors.HexColor('#4A90E2'))))
+        
+        doc.build(story)
+        logger.info(f"Tax PDF created: {output_path}")
 
 
 # Инициализация бота
@@ -284,18 +469,19 @@ bot = WoltInvoiceBot()
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /start"""
     welcome_message = """
-👋 Добро пожаловать в Wolt Invoice Bot!
+👋 Welcome to Wolt Faktury Bot!
 
-Этот бот поможет вам обработать фактуры от Wolt и создать итоговый PDF.
+This bot helps you process Wolt invoices and create summary PDFs.
 
-📋 Как это работает:
-1. Отправьте мне один или несколько PDF файлов с фактурами Wolt
-2. Напишите /summary когда хотите создать итоговый PDF
-3. Скачайте созданный итоговый документ
+📋 Commands:
+/start - Start the bot
+/status - View uploaded invoices
+/summary - Create invoices PDF report
+/taxes - 💰 Calculate student taxes
+/taxpdf - 📄 Generate tax PDF report
+/clear - Clear all invoices
 
-🗑️ Для удаления текущих фактур используйте /clear
-
-Начните с того, что отправьте мне свои фактуры!
+Send your Wolt PDF invoices to get started!
 """
     await update.message.reply_text(welcome_message)
 
@@ -307,10 +493,10 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Проверяем, что это PDF
     if not document.file_name.lower().endswith('.pdf'):
-        await update.message.reply_text("❌ Пожалуйста, отправляйте только PDF файлы.")
+        await update.message.reply_text("❌ Please send only PDF files.")
         return
     
-    await update.message.reply_text("📄 Обрабатываю фактуру...")
+    await update.message.reply_text("📄 Processing invoice...")
     
     try:
         # Скачиваем файл
@@ -335,24 +521,25 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Отправляем подтверждение
         count = len(bot.user_invoices[user_id])
         message = f"""
-✅ Фактура добавлена!
+✅ Invoice added!
 
-📋 Номер: {invoice.invoice_number}
-📅 Дата: {invoice.date}
-📆 Период: {invoice.period}
-💰 Итого: {invoice.total:,.2f} CZK
+📋 Number: {invoice.invoice_number}
+📅 Date: {invoice.date}
+📆 Period: {invoice.period}
+💰 Total: {invoice.total:,.2f} CZK
 
-📊 Всего фактур: {count}
+📊 Total invoices: {count}
 
-Для создания итогового PDF напишите /summary
+Create summary: /summary
+Calculate taxes: /taxes
 """
         await update.message.reply_text(message.replace(',', ' ').replace('.', ','))
         
     except Exception as e:
         logger.error(f"Error processing document: {e}")
         await update.message.reply_text(
-            f"❌ Ошибка при обработке фактуры: {str(e)}\n"
-            "Проверьте, что это правильный формат фактуры Wolt."
+            f"❌ Error processing invoice: {str(e)}\n"
+            "Please check that this is a valid Wolt invoice format."
         )
 
 
@@ -362,12 +549,12 @@ async def summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if user_id not in bot.user_invoices or not bot.user_invoices[user_id]:
         await update.message.reply_text(
-            "❌ У вас нет фактур для обработки.\n"
-            "Сначала отправьте мне PDF фактуры от Wolt."
+            "❌ No invoices found.\n"
+            "Please send Wolt PDF invoices first."
         )
         return
     
-    await update.message.reply_text("🔄 Создаю итоговый PDF...")
+    await update.message.reply_text("🔄 Creating summary PDF...")
     
     try:
         invoices = bot.user_invoices[user_id]
@@ -381,7 +568,7 @@ async def summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Отправляем файл
         total = sum(inv.total for inv in invoices)
-        caption = f"📊 Итого по {len(invoices)} фактурам\n💰 Общая сумма: {total:,.2f} CZK".replace(',', ' ').replace('.', ',')
+        caption = f"📊 Summary of {len(invoices)} invoices\n💰 Total: {total:,.2f} CZK".replace(',', ' ').replace('.', ',')
         
         with open(output_path, 'rb') as pdf_file:
             await update.message.reply_document(
@@ -394,13 +581,13 @@ async def summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         os.unlink(output_path)
         
         await update.message.reply_text(
-            "✅ Готово! Для удаления фактур используйте /clear"
+            "✅ Done! Use /clear to delete invoices"
         )
         
     except Exception as e:
         logger.error(f"Error creating summary: {e}")
         await update.message.reply_text(
-            f"❌ Ошибка при создании итога: {str(e)}"
+            f"❌ Error creating summary: {str(e)}"
         )
 
 
@@ -412,11 +599,11 @@ async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
         count = len(bot.user_invoices[user_id])
         bot.user_invoices[user_id] = []
         await update.message.reply_text(
-            f"✅ Удалено {count} фактур.\n"
-            "Можете отправить новые фактуры."
+            f"✅ Deleted {count} invoices.\n"
+            "You can send new invoices now."
         )
     else:
-        await update.message.reply_text("ℹ️ У вас нет фактур для удаления.")
+        await update.message.reply_text("ℹ️ No invoices to delete.")
 
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -424,7 +611,7 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
     if user_id not in bot.user_invoices or not bot.user_invoices[user_id]:
-        await update.message.reply_text("ℹ️ У вас пока нет фактур.")
+        await update.message.reply_text("ℹ️ No invoices yet.")
         return
     
     invoices = bot.user_invoices[user_id]
@@ -442,20 +629,165 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total = sum(inv.total for inv in sorted_invoices)
     
     message = f"""
-📊 Текущее состояние:
+📊 Current Status:
 
-Количество фактур: {len(sorted_invoices)}
-Общая сумма: {total:,.2f} CZK
+Invoices: {len(sorted_invoices)}
+Total: {total:,.2f} CZK
 
-📋 Фактуры:
+📋 Invoices:
 """.replace(',', ' ').replace('.', ',')
     
     for inv in sorted_invoices:
         message += f"• {inv.date} - {inv.invoice_number}: {inv.total:,.2f} CZK\n".replace(',', ' ').replace('.', ',')
     
-    message += "\nДля создания итога: /summary"
+    message += "\nCreate summary: /summary"
     
     await update.message.reply_text(message)
+
+
+async def calculate_taxes(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Tax calculator for students"""
+    user_id = update.effective_user.id
+    
+    if user_id not in bot.user_invoices or not bot.user_invoices[user_id]:
+        await update.message.reply_text(
+            "❌ No invoices found.\n"
+            "Please add invoices first."
+        )
+        return
+    
+    invoices = bot.user_invoices[user_id]
+    
+    # Calculate total income
+    total_income = sum(inv.total for inv in invoices)
+    
+    # Calculations
+    expenses_60 = total_income * 0.6  # 60% flat-rate expenses
+    tax_base = total_income - expenses_60
+    
+    # Tax 15%
+    tax_15 = tax_base * 0.15
+    
+    # Deductions
+    taxpayer_deduction = 30840  # Sleva na poplatníka
+    student_deduction = 4020    # Sleva na studenta
+    total_deductions = taxpayer_deduction + student_deduction
+    
+    # Final tax
+    final_tax = max(0, tax_15 - total_deductions)
+    
+    # Check thresholds
+    needs_health_insurance = total_income >= 100000
+    needs_social_insurance = total_income >= 100000
+    needs_tax_prepayment = total_income >= 50000
+    
+    message = f"""
+📊 TAX CALCULATION FOR STUDENT (2025)
+
+💰 Total Income: {total_income:,.2f} CZK
+
+📉 TAX CALCULATION:
+• Income (prijmy): {total_income:,.2f} CZK
+• Expenses 60%: -{expenses_60:,.2f} CZK
+• Tax base (zaklad dane): {tax_base:,.2f} CZK
+• Tax 15%: {tax_15:,.2f} CZK
+• Taxpayer deduction: -{taxpayer_deduction:,.2f} CZK
+• Student deduction: -{student_deduction:,.2f} CZK
+━━━━━━━━━━━━━━━━━━━
+💵 To pay: {final_tax:,.2f} CZK
+
+🏥 INSURANCE (pojisteni):
+""".replace(',', ' ').replace('.', ',')
+    
+    if needs_health_insurance:
+        min_health = 2968 * 12  # Minimum per year
+        message += f"⚠️ Health (zdravotni): YES (min. {min_health:,.2f} CZK/year)\n"
+    else:
+        message += "✅ Health (zdravotni): NO (income < 100,000 CZK)\n"
+    
+    if needs_social_insurance:
+        min_social = 3267 * 12  # Minimum per year
+        message += f"⚠️ Social (socialni): YES (min. {min_social:,.2f} CZK/year)\n"
+    else:
+        message += "✅ Social (socialni): NO (income < 100,000 CZK)\n"
+    
+    message += f"\n📅 TAX PREPAYMENTS (zalohy na dan):\n"
+    if needs_tax_prepayment:
+        message += "⚠️ YES - you must pay prepayments\n"
+    else:
+        message += "✅ NO - income < 50,000 CZK\n"
+    
+    message += f"""
+📋 DEADLINES (terminy):
+• Overview of payments: by 1.2.2026
+  (prehled plateb)
+• Tax return: by 1.4.2026
+  (danove priznani)
+
+⚠️ IMPORTANT:
+This is an estimated calculation!
+For accurate calculation consult:
+• Accountant (ucetni)
+• Tax office (financni urad)
+• Your insurance company
+
+💡 TIP: You can claim actual expenses
+instead of 60% flat-rate
+(fuel, repairs, phone, etc.)
+
+📄 Generate PDF report: /taxpdf
+""".replace(',', ' ').replace('.', ',')
+    
+    await update.message.reply_text(message)
+
+
+async def tax_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Creates tax calculation PDF"""
+    user_id = update.effective_user.id
+    
+    if user_id not in bot.user_invoices or not bot.user_invoices[user_id]:
+        await update.message.reply_text(
+            "❌ No invoices found.\n"
+            "Please add invoices first."
+        )
+        return
+    
+    await update.message.reply_text("🔄 Creating tax PDF...")
+    
+    try:
+        invoices = bot.user_invoices[user_id]
+        
+        # Создаем временный файл для PDF
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
+            output_path = tmp_file.name
+        
+        # Генерируем PDF
+        bot.create_tax_pdf(invoices, output_path)
+        
+        # Отправляем файл
+        total = sum(inv.total for inv in invoices)
+        caption = f"📊 Student Tax Report\n💰 Total income: {total:,.2f} CZK".replace(',', ' ').replace('.', ',')
+        
+        with open(output_path, 'rb') as pdf_file:
+            await update.message.reply_document(
+                document=pdf_file,
+                filename=f"tax_report_{datetime.now().strftime('%Y%m%d')}.pdf",
+                caption=caption
+            )
+        
+        # Удаляем временный файл
+        os.unlink(output_path)
+        
+        await update.message.reply_text(
+            "✅ Tax report generated!\n"
+            "⚠️ This is an estimate - consult an accountant for accurate calculation."
+        )
+        
+    except Exception as e:
+        logger.error(f"Error creating tax PDF: {e}")
+        await update.message.reply_text(
+            f"❌ Error creating tax report: {str(e)}"
+        )
 
 
 def main():
@@ -463,9 +795,9 @@ def main():
     # ВАЖНО: Вставьте сюда ваш токен от @BotFather
     TOKEN = os.getenv('BOT_TOKEN')
     
-    if TOKEN == "YOUR_BOT_TOKEN_HERE":
-        print("❌ ERROR: Вставьте ваш токен бота в переменную TOKEN!")
-        print("Получите токен у @BotFather в Telegram")
+    if not TOKEN:
+        print("❌ ERROR: Add your bot token to .env file!")
+        print("BOT_TOKEN=your_token_from_BotFather")
         return
     
     # Создаем приложение
@@ -476,10 +808,12 @@ def main():
     application.add_handler(CommandHandler("summary", summary))
     application.add_handler(CommandHandler("clear", clear))
     application.add_handler(CommandHandler("status", status))
+    application.add_handler(CommandHandler("taxes", calculate_taxes))
+    application.add_handler(CommandHandler("taxpdf", tax_pdf))
     application.add_handler(MessageHandler(filters.Document.PDF, handle_document))
     
     # Запускаем бота
-    print("🤖 Бот запущен!")
+    print("🤖 Bot started!")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
