@@ -4,6 +4,7 @@ Telegram бот для обработки фактур Wolt
 Принимает PDF-файлы фактур и создает итоговый PDF с суммой
 """
 
+from dotenv import load_dotenv
 import os
 import re
 import logging
@@ -34,6 +35,8 @@ from reportlab.platypus import (
     PageBreak
 )
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+
+load_dotenv()
 
 # Настройка логирования
 logging.basicConfig(
@@ -458,7 +461,7 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     """Запуск бота"""
     # ВАЖНО: Вставьте сюда ваш токен от @BotFather
-    TOKEN = 
+    TOKEN = os.getenv('BOT_TOKEN')
     
     if TOKEN == "YOUR_BOT_TOKEN_HERE":
         print("❌ ERROR: Вставьте ваш токен бота в переменную TOKEN!")
