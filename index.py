@@ -33,8 +33,7 @@ from reportlab.platypus import (
     Spacer,
     PageBreak
 )
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 
 # Настройка логирования
 logging.basicConfig(
@@ -119,6 +118,10 @@ class WoltInvoiceBot:
     
     def create_summary_pdf(self, invoices: List[InvoiceData], output_path: str):
         """Создает итоговый PDF со всеми фактурами"""
+        # Используем стандартные шрифты - они отлично работают с английским
+        font_name = 'Helvetica'
+        font_name_bold = 'Helvetica-Bold'
+        
         # Сортируем фактуры по дате (от старых к новым)
         def parse_date(date_str):
             """Парсит дату формата DD.MM.YYYY"""
@@ -149,10 +152,11 @@ class WoltInvoiceBot:
             fontSize=24,
             textColor=colors.HexColor('#1a1a1a'),
             spaceAfter=30,
-            alignment=1  # Center
+            alignment=TA_CENTER,
+            fontName=font_name_bold
         )
         
-        title = Paragraph("Итоговая сводка по фактурам Wolt", title_style)
+        title = Paragraph("Wolt Invoices Summary", title_style)
         story.append(title)
         
         # Дата создания отчета
@@ -161,10 +165,11 @@ class WoltInvoiceBot:
             parent=styles['Normal'],
             fontSize=10,
             textColor=colors.grey,
-            alignment=1
+            alignment=TA_CENTER,
+            fontName=font_name
         )
         report_date = Paragraph(
-            f"Создано: {datetime.now().strftime('%d.%m.%Y %H:%M')}",
+            f"Created: {datetime.now().strftime('%d.%m.%Y %H:%M')}",
             date_style
         )
         story.append(report_date)
@@ -172,7 +177,7 @@ class WoltInvoiceBot:
         
         # Таблица с фактурами
         table_data = [
-            ['Номер фактуры', 'Дата', 'Период', 'Заработок', 'Чаевые', 'Итого']
+            ['Invoice Number', 'Date', 'Period', 'Earnings', 'Tips', 'Total']
         ]
         
         total_earnings = 0
@@ -194,7 +199,7 @@ class WoltInvoiceBot:
         
         # Итоговая строка
         table_data.append([
-            Paragraph('<b>ИТОГО</b>', styles['Normal']),
+            Paragraph('<b>TOTAL</b>', styles['Normal']),
             '', '',
             Paragraph(f"<b>{total_earnings:,.2f}</b>".replace(',', ' ').replace('.', ','), styles['Normal']),
             Paragraph(f"<b>{total_tips:,.2f}</b>".replace(',', ' ').replace('.', ','), styles['Normal']),
@@ -208,19 +213,19 @@ class WoltInvoiceBot:
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4A90E2')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
             ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTNAME', (0, 0), (-1, 0), font_name_bold),
             ('FONTSIZE', (0, 0), (-1, 0), 10),
             ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
             
             # Данные
-            ('FONTNAME', (0, 1), (-1, -2), 'Helvetica'),
+            ('FONTNAME', (0, 1), (-1, -2), font_name),
             ('FONTSIZE', (0, 1), (-1, -2), 9),
             ('ALIGN', (3, 1), (-1, -1), 'RIGHT'),
             ('ALIGN', (0, 1), (2, -1), 'LEFT'),
             
             # Итоговая строка
             ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#E8F4F8')),
-            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('FONTNAME', (0, -1), (-1, -1), font_name_bold),
             ('FONTSIZE', (0, -1), (-1, -1), 11),
             
             # Границы
@@ -244,11 +249,11 @@ class WoltInvoiceBot:
             parent=styles['Normal'],
             fontSize=18,
             textColor=colors.HexColor('#4A90E2'),
-            alignment=2,  # Right
-            fontName='Helvetica-Bold'
+            alignment=TA_RIGHT,
+            fontName=font_name_bold
         )
         
-        summary_text = f"Общая сумма: {total_amount:,.2f} CZK".replace(',', ' ').replace('.', ',')
+        summary_text = f"Total Amount: {total_amount:,.2f} CZK".replace(',', ' ').replace('.', ',')
         story.append(Paragraph(summary_text, summary_style))
         
         # Дополнительная информация
@@ -257,10 +262,11 @@ class WoltInvoiceBot:
             'InfoStyle',
             parent=styles['Normal'],
             fontSize=9,
-            textColor=colors.grey
+            textColor=colors.grey,
+            fontName=font_name
         )
         
-        info_text = f"Количество фактур: {len(invoices)}"
+        info_text = f"Number of invoices: {len(invoices)}"
         story.append(Paragraph(info_text, info_style))
         
         # Собираем PDF
