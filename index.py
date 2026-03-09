@@ -4,6 +4,7 @@ Telegram бот для обработки фактур Wolt
 Принимает PDF-файлы фактур и создает итоговый PDF с суммой
 """
 
+from dotenv import load_dotenv
 import os
 import re
 import logging
@@ -33,8 +34,9 @@ from reportlab.platypus import (
     Spacer,
     PageBreak
 )
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+
+load_dotenv()
 
 # Настройка логирования
 logging.basicConfig(
@@ -119,6 +121,21 @@ class WoltInvoiceBot:
     
     def create_summary_pdf(self, invoices: List[InvoiceData], output_path: str):
         """Создает итоговый PDF со всеми фактурами"""
+        # Используем стандартные шрифты - они отлично работают с английским
+        font_name = 'Helvetica'
+        font_name_bold = 'Helvetica-Bold'
+        
+        # Сортируем фактуры по дате (от старых к новым)
+        def parse_date(date_str):
+            """Парсит дату формата DD.MM.YYYY"""
+            try:
+                from datetime import datetime as dt
+                return dt.strptime(date_str, '%d.%m.%Y')
+            except:
+                return dt.min
+        
+        sorted_invoices = sorted(invoices, key=lambda inv: parse_date(inv.date))
+        
         doc = SimpleDocTemplate(
             output_path,
             pagesize=A4,
@@ -138,10 +155,11 @@ class WoltInvoiceBot:
             fontSize=24,
             textColor=colors.HexColor('#1a1a1a'),
             spaceAfter=30,
-            alignment=1  # Center
+            alignment=TA_CENTER,
+            fontName=font_name_bold
         )
         
-        title = Paragraph("Souhrn faktur Wolt", title_style)
+        title = Paragraph("Wolt Invoices Summary", title_style)
         story.append(title)
         
         # Дата создания отчета
@@ -150,10 +168,11 @@ class WoltInvoiceBot:
             parent=styles['Normal'],
             fontSize=10,
             textColor=colors.grey,
-            alignment=1
+            alignment=TA_CENTER,
+            fontName=font_name
         )
         report_date = Paragraph(
-            f"Vytvořeno: {datetime.now().strftime('%d.%m.%Y %H:%M')}",
+            f"Created: {datetime.now().strftime('%d.%m.%Y %H:%M')}",
             date_style
         )
         story.append(report_date)
@@ -161,14 +180,14 @@ class WoltInvoiceBot:
         
         # Таблица с фактурами
         table_data = [
-            ['Číslo faktury', 'Datum', 'Období', 'Výdělky', 'Spropitné', 'Celkem']
+            ['Invoice Number', 'Date', 'Period', 'Earnings', 'Tips', 'Total']
         ]
         
         total_earnings = 0
         total_tips = 0
         total_amount = 0
         
-        for inv in invoices:
+        for inv in sorted_invoices:
             table_data.append([
                 inv.invoice_number,
                 inv.date,
@@ -183,7 +202,7 @@ class WoltInvoiceBot:
         
         # Итоговая строка
         table_data.append([
-            Paragraph('<b>CELKEM</b>', styles['Normal']),
+            Paragraph('<b>TOTAL</b>', styles['Normal']),
             '', '',
             Paragraph(f"<b>{total_earnings:,.2f}</b>".replace(',', ' ').replace('.', ','), styles['Normal']),
             Paragraph(f"<b>{total_tips:,.2f}</b>".replace(',', ' ').replace('.', ','), styles['Normal']),
@@ -197,19 +216,19 @@ class WoltInvoiceBot:
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4A90E2')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
             ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTNAME', (0, 0), (-1, 0), font_name_bold),
             ('FONTSIZE', (0, 0), (-1, 0), 10),
             ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
             
             # Данные
-            ('FONTNAME', (0, 1), (-1, -2), 'Helvetica'),
+            ('FONTNAME', (0, 1), (-1, -2), font_name),
             ('FONTSIZE', (0, 1), (-1, -2), 9),
             ('ALIGN', (3, 1), (-1, -1), 'RIGHT'),
             ('ALIGN', (0, 1), (2, -1), 'LEFT'),
             
             # Итоговая строка
             ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#E8F4F8')),
-            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('FONTNAME', (0, -1), (-1, -1), font_name_bold),
             ('FONTSIZE', (0, -1), (-1, -1), 11),
             
             # Границы
@@ -233,11 +252,11 @@ class WoltInvoiceBot:
             parent=styles['Normal'],
             fontSize=18,
             textColor=colors.HexColor('#4A90E2'),
-            alignment=2,  # Right
-            fontName='Helvetica-Bold'
+            alignment=TA_RIGHT,
+            fontName=font_name_bold
         )
         
-        summary_text = f"Celková částka: {total_amount:,.2f} CZK".replace(',', ' ').replace('.', ',')
+        summary_text = f"Total Amount: {total_amount:,.2f} CZK".replace(',', ' ').replace('.', ',')
         story.append(Paragraph(summary_text, summary_style))
         
         # Дополнительная информация
@@ -246,10 +265,11 @@ class WoltInvoiceBot:
             'InfoStyle',
             parent=styles['Normal'],
             fontSize=9,
-            textColor=colors.grey
+            textColor=colors.grey,
+            fontName=font_name
         )
         
-        info_text = f"Počet faktur: {len(invoices)}"
+        info_text = f"Number of invoices: {len(invoices)}"
         story.append(Paragraph(info_text, info_style))
         
         # Собираем PDF
@@ -264,18 +284,18 @@ bot = WoltInvoiceBot()
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /start"""
     welcome_message = """
-👋 Vítejte v Wolt Invoice Bot!
+👋 Добро пожаловать в Wolt Invoice Bot!
 
-Tento bot vám pomůže zpracovat faktury z Woltu a vytvořit souhrnný PDF.
+Этот бот поможет вам обработать фактуры от Wolt и создать итоговый PDF.
 
-📋 Jak to funguje:
-1. Pošlete mi jednu nebo více PDF faktur z Woltu
-2. Napište /summary když chcete vytvořit souhrnný PDF
-3. Stáhněte si vytvořený souhrnný dokument
+📋 Как это работает:
+1. Отправьте мне один или несколько PDF файлов с фактурами Wolt
+2. Напишите /summary когда хотите создать итоговый PDF
+3. Скачайте созданный итоговый документ
 
-🗑️ Pro vymazání aktuálních faktur použijte /clear
+🗑️ Для удаления текущих фактур используйте /clear
 
-Začněte tím, že mi pošlete své faktury!
+Начните с того, что отправьте мне свои фактуры!
 """
     await update.message.reply_text(welcome_message)
 
@@ -287,10 +307,10 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Проверяем, что это PDF
     if not document.file_name.lower().endswith('.pdf'):
-        await update.message.reply_text("❌ Prosím, pošlete pouze PDF soubory.")
+        await update.message.reply_text("❌ Пожалуйста, отправляйте только PDF файлы.")
         return
     
-    await update.message.reply_text("📄 Zpracovávám fakturu...")
+    await update.message.reply_text("📄 Обрабатываю фактуру...")
     
     try:
         # Скачиваем файл
@@ -315,24 +335,24 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Отправляем подтверждение
         count = len(bot.user_invoices[user_id])
         message = f"""
-✅ Faktura přidána!
+✅ Фактура добавлена!
 
-📋 Číslo: {invoice.invoice_number}
-📅 Datum: {invoice.date}
-📆 Období: {invoice.period}
-💰 Celkem: {invoice.total:,.2f} CZK
+📋 Номер: {invoice.invoice_number}
+📅 Дата: {invoice.date}
+📆 Период: {invoice.period}
+💰 Итого: {invoice.total:,.2f} CZK
 
-📊 Celkem faktur: {count}
+📊 Всего фактур: {count}
 
-Pro vytvoření souhrnného PDF napište /summary
+Для создания итогового PDF напишите /summary
 """
         await update.message.reply_text(message.replace(',', ' ').replace('.', ','))
         
     except Exception as e:
         logger.error(f"Error processing document: {e}")
         await update.message.reply_text(
-            f"❌ Chyba při zpracování faktury: {str(e)}\n"
-            "Zkontrolujte, zda je to správný formát faktury Wolt."
+            f"❌ Ошибка при обработке фактуры: {str(e)}\n"
+            "Проверьте, что это правильный формат фактуры Wolt."
         )
 
 
@@ -342,12 +362,12 @@ async def summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if user_id not in bot.user_invoices or not bot.user_invoices[user_id]:
         await update.message.reply_text(
-            "❌ Nemáte žádné faktury k zpracování.\n"
-            "Pošlete mi nejdříve PDF faktury z Woltu."
+            "❌ У вас нет фактур для обработки.\n"
+            "Сначала отправьте мне PDF фактуры от Wolt."
         )
         return
     
-    await update.message.reply_text("🔄 Vytvářím souhrnný PDF...")
+    await update.message.reply_text("🔄 Создаю итоговый PDF...")
     
     try:
         invoices = bot.user_invoices[user_id]
@@ -361,7 +381,7 @@ async def summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Отправляем файл
         total = sum(inv.total for inv in invoices)
-        caption = f"📊 Souhrn {len(invoices)} faktur\n💰 Celkem: {total:,.2f} CZK".replace(',', ' ').replace('.', ',')
+        caption = f"📊 Итого по {len(invoices)} фактурам\n💰 Общая сумма: {total:,.2f} CZK".replace(',', ' ').replace('.', ',')
         
         with open(output_path, 'rb') as pdf_file:
             await update.message.reply_document(
@@ -374,13 +394,13 @@ async def summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         os.unlink(output_path)
         
         await update.message.reply_text(
-            "✅ Hotovo! Pro vymazání faktur použijte /clear"
+            "✅ Готово! Для удаления фактур используйте /clear"
         )
         
     except Exception as e:
         logger.error(f"Error creating summary: {e}")
         await update.message.reply_text(
-            f"❌ Chyba při vytváření souhrnu: {str(e)}"
+            f"❌ Ошибка при создании итога: {str(e)}"
         )
 
 
@@ -392,11 +412,11 @@ async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
         count = len(bot.user_invoices[user_id])
         bot.user_invoices[user_id] = []
         await update.message.reply_text(
-            f"✅ Vymazáno {count} faktur.\n"
-            "Můžete poslat nové faktury."
+            f"✅ Удалено {count} фактур.\n"
+            "Можете отправить новые фактуры."
         )
     else:
-        await update.message.reply_text("ℹ️ Nemáte žádné faktury k vymazání.")
+        await update.message.reply_text("ℹ️ У вас нет фактур для удаления.")
 
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -404,25 +424,36 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
     if user_id not in bot.user_invoices or not bot.user_invoices[user_id]:
-        await update.message.reply_text("ℹ️ Zatím nemáte žádné faktury.")
+        await update.message.reply_text("ℹ️ У вас пока нет фактур.")
         return
     
     invoices = bot.user_invoices[user_id]
-    total = sum(inv.total for inv in invoices)
+    
+    # Сортируем по дате
+    def parse_date(date_str):
+        """Парсит дату формата DD.MM.YYYY"""
+        try:
+            from datetime import datetime as dt
+            return dt.strptime(date_str, '%d.%m.%Y')
+        except:
+            return dt.min
+    
+    sorted_invoices = sorted(invoices, key=lambda inv: parse_date(inv.date))
+    total = sum(inv.total for inv in sorted_invoices)
     
     message = f"""
-📊 Aktuální stav:
+📊 Текущее состояние:
 
-Počet faktur: {len(invoices)}
-Celková částka: {total:,.2f} CZK
+Количество фактур: {len(sorted_invoices)}
+Общая сумма: {total:,.2f} CZK
 
-📋 Faktury:
+📋 Фактуры:
 """.replace(',', ' ').replace('.', ',')
     
-    for inv in invoices:
-        message += f"• {inv.invoice_number}: {inv.total:,.2f} CZK\n".replace(',', ' ').replace('.', ',')
+    for inv in sorted_invoices:
+        message += f"• {inv.date} - {inv.invoice_number}: {inv.total:,.2f} CZK\n".replace(',', ' ').replace('.', ',')
     
-    message += "\nPro vytvoření souhrnu: /summary"
+    message += "\nДля создания итога: /summary"
     
     await update.message.reply_text(message)
 
@@ -430,7 +461,7 @@ Celková částka: {total:,.2f} CZK
 def main():
     """Запуск бота"""
     # ВАЖНО: Вставьте сюда ваш токен от @BotFather
-    TOKEN = 
+    TOKEN = os.getenv('BOT_TOKEN')
     
     if TOKEN == "YOUR_BOT_TOKEN_HERE":
         print("❌ ERROR: Вставьте ваш токен бота в переменную TOKEN!")
